@@ -281,7 +281,7 @@
           var marker = markers[id];
           if (marker) {
             var person = people[id];
-            var isLevel1 = knownIds.includes(id);
+            var isLevel1 = knownIds.includes(id) || id === personId;
             var popupContent = `
               <div class="p-4">
                 <div class="flex flex-col items-center">
