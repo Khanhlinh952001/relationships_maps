@@ -55,8 +55,20 @@
       <p class="text-gray-600">지도에서 사용자 간의 관계 표시</p>
     </div>
 
-    <div class="bg-white rounded-lg shadow-lg overflow-hidden">
-      <div id="map" class="w-full"></div>
+    <div class="flex gap-4">
+      <div class="bg-white rounded-lg shadow-lg overflow-hidden flex-grow">
+        <div id="map" class="w-full"></div>
+      </div>
+      
+      <div class="bg-white rounded-lg shadow-lg p-4 w-80">
+        <h2 class="text-xl font-semibold text-gray-800 mb-2">현재 보이는 사람들</h2>
+        <div id="visible-people-count" class="text-sm text-gray-600 mb-4">
+          현재 영역에 <span class="font-semibold">0</span>명의 사람이 있습니다
+        </div>
+        <div id="visible-people-list" class="space-y-3">
+          <!-- Visible people will be listed here -->
+        </div>
+      </div>
     </div>
   </div>
 
@@ -98,6 +110,46 @@
       var markers = {};
       var allMarkers = L.layerGroup().addTo(map);
       var highlightedMarkers = L.layerGroup().addTo(map);
+      var linesGroup = L.layerGroup().addTo(map);
+
+      // Function to update visible people list
+      function updateVisiblePeopleList() {
+        const visiblePeopleList = document.getElementById('visible-people-list');
+        const visiblePeopleCount = document.getElementById('visible-people-count');
+        const bounds = map.getBounds();
+        const visiblePeople = [];
+
+        Object.entries(markers).forEach(([id, marker]) => {
+          if (bounds.contains(marker.getLatLng())) {
+            const person = people[id];
+            visiblePeople.push({
+              id,
+              name: person.name,
+              avatar: person.avatar
+            });
+          }
+        });
+
+        // Update the count
+        visiblePeopleCount.innerHTML = `현재 영역에 <span class="font-semibold">${visiblePeople.length}</span>명의 사람이 있습니다`;
+
+        // Sort people by name
+        visiblePeople.sort((a, b) => a.name.localeCompare(b.name));
+
+        // Update the list
+        visiblePeopleList.innerHTML = visiblePeople.map(person => `
+          <div class="flex items-center space-x-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer" 
+               onclick="showConnections('${person.id}')">
+            <img src="${person.avatar}" alt="${person.name}" 
+                 class="w-10 h-10 rounded-full object-cover border-2 border-gray-200">
+            <span class="text-gray-700">${person.name}</span>
+          </div>
+        `).join('');
+      }
+
+      // Update visible people list when map moves
+      map.on('moveend', updateVisiblePeopleList);
+      map.on('zoomend', updateVisiblePeopleList);
 
       function createMarker(id) {
         // Create marker for each person
@@ -131,7 +183,8 @@
         createMarker(id);
       });
 
-      var linesGroup = L.layerGroup().addTo(map);
+      // Initial update of visible people list
+      updateVisiblePeopleList();
 
       function showConnections(personId) {
         // Hide all original markers
