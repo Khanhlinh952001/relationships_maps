@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>지도상의 인간관계 (확장)</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    #map { height: 600px; }
+    .marker {
+      width: 100px;
+      height: 120px;
+      background: url('marker.png') no-repeat center/contain;
+      position: relative;
+    }
+    .avatar {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      object-fit: cover;
+      margin-top: 33px;
+      border: 2px solid #fff;
+      margin-left: 17px;
+    }
+    .custom-marker {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    .marker-level1 {
+      background: #8B5CF6;
+      border: 3px solid white;
+    }
+    .marker-level2 {
+      background: #10B981;
+      border: 3px solid white;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="container mx-auto px-4 py-8">
+    <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+      <h1 class="text-3xl font-bold text-gray-800 mb-2">데모: 지도상의 인간관계</h1>
+      <p class="text-gray-600">지도에서 사용자 간의 관계 표시</p>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+      <div id="map" class="w-full"></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+  // Load data from data.json
+  // 데이터 로드 / Tải dữ liệu từ data.json
+  fetch('data.json')
+    .then(response => response.json())
+    .then(data => {
+      // Convert data to the format we need
+      // 데이터를 필요한 형식으로 변환 / Chuyển đổi dữ liệu sang định dạng cần thiết
+      const people = {};
+      const relationships = {};
+
+      // Convert people data
+      // 사람 데이터 변환 / Chuyển đổi dữ liệu người dùng
+      data.people.forEach(person => {
+        people[person.id] = {
+          name: person.name,
+          coords: [person.latitude, person.longitude],
+          avatar: person.avatar_url
+        };
+      });
+
+      // Convert relationships data
+      Object.entries(data.relationships).forEach(([id, connections]) => {
+        relationships[id] = connections;
+      });
+
+      // Initialize map
+      // 지도 초기화 / Khởi tạo bản đồ
+      var map = L.map('map').setView([36.2048, 138.2529], 5);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
+
+      var markers = {};
+      var allMarkers = L.layerGroup().addTo(map);
+      var highlightedMarkers = L.layerGroup().addTo(map);
+
+      function createMarker(id) {
+        // Create marker for each person
+        // 각 사람에 대한 마커 생성 / Tạo marker cho mỗi người
+        if (markers[id]) return markers[id];
+        var person = people[id];
+        var marker = L.marker(person.coords, {
+          icon: L.divIcon({
+            className: '',
+            html: `
+                <div style="width:30px;height:30px;border-radius:50%;overflow:hidden;border:2px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,0.2);background:#fff;">
+                    <img src="${person.avatar}" style="width:100%;height:100%;object-fit:cover;" alt="Avatar">
+              </div>
+            `,
+            iconSize: [44, 44],
+            iconAnchor: [22, 22]
+          }),
+          zIndexOffset: 0
+        }).addTo(allMarkers).bindPopup(person.name);
+        markers[id] = marker;
+
+        marker.on('click', function() {
+          showConnections(id);
+        });
+        return marker;
+      }
+
+      // Create markers for all people initially
+      // 처음에 모든 사람에 대한 마커 생성 / Tạo marker cho tất cả người ban đầu
+      Object.keys(people).forEach(function(id) {
+        createMarker(id);
+      });
+
+      var linesGroup = L.layerGroup().addTo(map);
+
+      function showConnections(personId) {
+        // Hide all original markers
+        // 모든 원본 마커 숨기기 / Ẩn tất cả marker gốc
+        Object.keys(markers).forEach(function(id) {
+          markers[id].remove();
+        });
+
+        // Clear previously highlighted markers
+        // 이전에 강조된 마커 지우기 / Xóa các marker được highlight trước đó
+        highlightedMarkers.clearLayers();
+        linesGroup.clearLayers();
+
+        // Tạo set để lưu các ID cần highlight
+        var highlightedIds = new Set();
+        highlightedIds.add(personId);
+
+        var fromPerson = people[personId];
+        var knownIds = relationships[personId];
+        if (!knownIds || knownIds.length === 0) return;
+
+        // Add level 1 IDs to set
+        // 레벨 1 ID를 세트에 추가 / Thêm các ID cấp 1 vào set
+        knownIds.forEach(function(toId) {
+          highlightedIds.add(toId);
+        });
+
+        // Add level 2 IDs to set
+        // 레벨 2 ID를 세트에 추가 / Thêm các ID cấp 2 vào set
+        knownIds.forEach(function(toId) {
+          var secondLevelIds = relationships[toId];
+          if (secondLevelIds) {
+            secondLevelIds.forEach(function(secondLevelId) {
+              if (secondLevelId != personId) {
+                highlightedIds.add(secondLevelId);
+              }
+            });
+          }
+        });
+
+        // Show markers without relationships with low zIndex
+        // 관계가 없는 마커를 낮은 zIndex로 표시 / Hiển thị lại các marker không có quan hệ với zIndex thấp
+        Object.keys(markers).forEach(function(id) {
+          if (!highlightedIds.has(id)) {
+            markers[id].addTo(allMarkers);
+          }
+        });
+
+        // Create array to store all connections
+        // 모든 연결을 저장할 배열 생성 / Tạo mảng để lưu tất cả các kết nối
+        var allConnections = [];
+
+        // Add level 1 connections
+        // 레벨 1 연결 추가 / Thêm kết nối cấp 1
+        knownIds.forEach(function(toId) {
+          allConnections.push({
+            from: personId,
+            to: toId,
+            level: 1
+          });
+        });
+
+        // Add level 2 connections
+        // 레벨 2 연결 추가 / Thêm kết nối cấp 2
+        knownIds.forEach(function(toId) {
+          var secondLevelIds = relationships[toId];
+          if (secondLevelIds) {
+            secondLevelIds.forEach(function(secondLevelId) {
+              if (secondLevelId != personId) {
+                allConnections.push({
+                  from: toId,
+                  to: secondLevelId,
+                  level: 2
+                });
+              }
+            });
+          }
+        });
+
+        // Draw all connections
+        // 모든 연결 그리기 / Vẽ tất cả các kết nối
+        allConnections.forEach(function(conn) {
+          var fromPerson = people[conn.from];
+          var toPerson = people[conn.to];
+          
+          // Calculate midpoint for curve
+          // 곡선을 위한 중간점 계산 / Tính toán điểm trung gian để tạo đường cong
+          var midPoint = [
+            (fromPerson.coords[0] + toPerson.coords[0]) / 2,
+            (fromPerson.coords[1] + toPerson.coords[1]) / 2
+          ];
+
+          // Adjust curve based on connection level
+          // 연결 레벨에 따라 곡선 조정 / Điều chỉnh độ cong dựa trên cấp độ kết nối
+          var curveOffset = conn.level === 1 ? 0.1 : 0.05;
+          
+          var curvePoints = [
+            fromPerson.coords,
+            [midPoint[0] + curveOffset, midPoint[1] + curveOffset],
+            toPerson.coords
+          ];
+
+          // Create curve with different style for each level
+          // 각 레벨에 다른 스타일로 곡선 생성 / Tạo đường cong với style khác nhau cho mỗi cấp độ
+          var style = conn.level === 1 ? {
+            color: '#8B5CF6',
+            weight: 3,
+            opacity: 0.8,
+            dashArray: '10, 10',
+            lineCap: 'round',
+            lineJoin: 'round'
+          } : {
+            color: '#10B981',
+            weight: 2,
+            opacity: 0.6,
+            dashArray: '5, 5',
+            lineCap: 'round',
+            lineJoin: 'round'
+          };
+
+          var polyline = L.polyline(curvePoints, style).addTo(linesGroup);
+
+          // Add animation for the line
+          // 선에 애니메이션 추가 / Thêm animation cho đường
+          var dash = polyline.options.dashArray.split(',').map(Number);
+          var offset = 0;
+          setInterval(function() {
+            offset = (offset + 1) % (dash[0] + dash[1]);
+            polyline.setStyle({ dashOffset: -offset });
+          }, 50);
+
+          // Add direction arrow
+          // 방향 화살표 추가 / Thêm mũi tên chỉ hướng
+          var arrow = L.polyline([toPerson.coords, [
+            toPerson.coords[0] - 0.01,
+            toPerson.coords[1] - 0.01
+          ]], {
+            color: style.color,
+            weight: style.weight - 1,
+            opacity: style.opacity
+          }).addTo(linesGroup);
+        });
+
+        // Highlight necessary markers
+        // 필요한 마커 강조 / Highlight các marker cần thiết
+        highlightedIds.forEach(function(id) {
+          var marker = markers[id];
+          if (marker) {
+            var person = people[id];
+            var isLevel1 = knownIds.includes(id);
+            var popupContent = `
+              <div class="p-4">
+                <div class="flex flex-col items-center">
+                  <div class="w-16 h-16 rounded-full overflow-hidden mb-3 ${isLevel1 ? 'ring-4 ring-purple-500' : 'ring-4 ring-emerald-500'}">
+                    <img class="w-full h-full object-cover" src="${person.avatar}" alt="Avatar">
+                  </div>
+                  <h3 class="text-lg font-semibold text-gray-800">${person.name}</h3>
+                  <span class="mt-2 px-3 py-1 rounded-full text-xs font-medium ${isLevel1 ? 'bg-purple-100 text-purple-800' : 'bg-emerald-100 text-emerald-800'}">
+                    ${isLevel1 ? '직접 연결' : '간접 연결'}
+                  </span>
+                </div>
+              </div>
+            `;
+            
+            var highlightedMarker = L.marker(people[id].coords, {
+              icon: L.divIcon({
+                className: 'custom-marker-container',
+                html: `
+                  <div class="custom-marker ${isLevel1 ? 'marker-level1' : 'marker-level2'}">
+                    ${person.name.charAt(0)}
+                  </div>
+                  
+                `,
+                iconSize: [40, 40],
+                iconAnchor: [20, 20]
+              }),
+              zIndexOffset: isLevel1 ? 1000 : 500
+            }).addTo(highlightedMarkers).bindPopup(popupContent);
+          }
+        });
+
+        // Create bounds for zoom
+        // 확대/축소를 위한 경계 생성 / Tạo bounds để zoom
+        var bounds = L.latLngBounds([]);
+        highlightedIds.forEach(function(id) {
+          bounds.extend(people[id].coords);
+        });
+
+        // Zoom map to show all related points
+        // 관련된 모든 점을 표시하도록 지도 확대/축소 / Zoom map để hiển thị tất cả các điểm có liên quan
+        if (!bounds.isEmpty()) {
+          map.fitBounds(bounds, {
+            padding: [50, 50],
+            maxZoom: 10,
+            animate: true,
+            duration: 1
+          });
+        }
+      }
+    });
+  </script>
+</body>
+</html>
